@@ -1,0 +1,26 @@
+{
+  "name": "chain-cosmos-server",
+  "version": "1.0.0",
+  "description": "A blockchain implementation using Node.js and Fastify",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "fastify": "^4.21.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "type": "module",
+  "keywords": [
+    "blockchain",
+    "nodejs",
+    "fastify"
+  ],
+  "author": "",
+  "license": "MIT"
+}
