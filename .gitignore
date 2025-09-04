@@ -1,0 +1,10 @@
+node_modules/
+
+# Dependencies caching
+dist/
+build/
+.vite/
+.vite-storybook/
+
+# Editor and OS files
+.vscode/
