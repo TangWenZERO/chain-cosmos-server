@@ -15,28 +15,28 @@ const fastify = Fastify({
     logger: true
 });
 
-// Initialize blockchain and managers
+// 初始化区块链和管理器
 const blockchain = new Blockchain();
 const walletManager = new WalletManager(blockchain);
 const tokenManager = new TokenManager(blockchain);
 const transferManager = new TransferManager(blockchain, walletManager);
 const miningManager = new MiningManager(blockchain, walletManager);
 
-// Make managers available to routes
+// 使管理器对路由可用
 fastify.decorate('blockchain', blockchain);
 fastify.decorate('walletManager', walletManager);
 fastify.decorate('tokenManager', tokenManager);
 fastify.decorate('transferManager', transferManager);
 fastify.decorate('miningManager', miningManager);
 
-// Register CORS plugin
+// 注册CORS插件
 await fastify.register(import('@fastify/cors'), {
-    origin: true, // Allow all origins
+    origin: true, // 允许所有来源
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 });
 
-// Health check endpoint
+// 健康检查端点
 fastify.get('/health', async (request, reply) => {
     return {
         status: 'healthy',
@@ -45,7 +45,7 @@ fastify.get('/health', async (request, reply) => {
     };
 });
 
-// API status endpoint
+// API状态端点
 fastify.get('/', async (request, reply) => {
     const chainInfo = blockchain.getChainInfo();
     const tokenInfo = tokenManager.getTokenInfo();
@@ -68,14 +68,14 @@ fastify.get('/', async (request, reply) => {
     };
 });
 
-// Register API routes
+// 注册API路由
 fastify.register(blockchainRoutes, { prefix: '/api/blockchain' });
 fastify.register(walletRoutes, { prefix: '/api/wallets' });
 fastify.register(transferRoutes, { prefix: '/api/transfers' });
 fastify.register(miningRoutes, { prefix: '/api/mining' });
 fastify.register(tokenRoutes, { prefix: '/api/tokens' });
 
-// Error handler
+// 错误处理程序
 fastify.setErrorHandler(async (error, request, reply) => {
     fastify.log.error(error);
     
@@ -87,7 +87,7 @@ fastify.setErrorHandler(async (error, request, reply) => {
     });
 });
 
-// 404 handler
+// 404处理程序
 fastify.setNotFoundHandler(async (request, reply) => {
     reply.code(404).send({
         success: false,
@@ -97,7 +97,7 @@ fastify.setNotFoundHandler(async (request, reply) => {
     });
 });
 
-// Start server
+// 启动服务器
 const start = async () => {
     try {
         const port = process.env.PORT || 3000;
@@ -105,23 +105,23 @@ const start = async () => {
         
         await fastify.listen({ port, host });
         
-        console.log(`🚀 Chain Cosmos Server is running on http://${host}:${port}`);
-        console.log(`📊 Blockchain Explorer API available at http://${host}:${port}/api`);
-        console.log(`💰 Token: ${tokenManager.getTokenInfo().name} (${tokenManager.getTokenInfo().symbol})`);
-        console.log(`⛏️  Mining reward: ${blockchain.miningReward} tokens per block`);
-        console.log(`🔗 Genesis block created with ${blockchain.totalSupply} total supply`);
+        console.log(`🚀 Chain Cosmos 服务器正在运行 http://${host}:${port}`);
+        console.log(`📊 区块链浏览器 API 地址 http://${host}:${port}/api`);
+        console.log(`💰 代币: ${tokenManager.getTokenInfo().name} (${tokenManager.getTokenInfo().symbol})`);
+        console.log(`⛏️  挖矿奖励: ${blockchain.miningReward} 代币/区块`);
+        console.log(`🔗 创世区块创建，总供应量 ${blockchain.totalSupply}`);
         
-        // Create initial wallets for testing
-        console.log('\n🔧 Creating test wallets...');
+        // 创建初始测试钱包
+        console.log('\n🔧 创建测试钱包...');
         const wallet1 = walletManager.createWallet();
         const wallet2 = walletManager.createWallet();
         
-        console.log(`Wallet 1: ${wallet1.wallet.address}`);
-        console.log(`Wallet 2: ${wallet2.wallet.address}`);
+        console.log(`钱包 1: ${wallet1.wallet.address}`);
+        console.log(`钱包 2: ${wallet2.wallet.address}`);
         
-        // Register a test miner
-        const minerResult = miningManager.registerMiner(wallet1.wallet.address, 'Test Miner 1');
-        console.log(`✅ Registered miner: ${minerResult.miner.name}`);
+        // 注册测试矿工
+        const minerResult = miningManager.registerMiner(wallet1.wallet.address, '测试矿工 1');
+        console.log(`✅ 已注册矿工: ${minerResult.miner.name}`);
         
     } catch (err) {
         fastify.log.error(err);
