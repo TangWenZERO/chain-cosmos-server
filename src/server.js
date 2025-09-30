@@ -374,87 +374,106 @@ class WorkerFastifyAdapter {
     }
 }
 
-const app = new WorkerFastifyAdapter();
+let initializedApp;
+let initializationPromise;
 
-const blockchain = new Blockchain();
-const walletManager = new WalletManager(blockchain);
-const tokenManager = new TokenManager(blockchain);
-const transferManager = new TransferManager(blockchain, walletManager);
-const miningManager = new MiningManager(blockchain, walletManager);
+async function setupApplication() {
+    if (initializationPromise) {
+        await initializationPromise;
+        return initializedApp;
+    }
 
-app.decorate('blockchain', blockchain);
-app.decorate('walletManager', walletManager);
-app.decorate('tokenManager', tokenManager);
-app.decorate('transferManager', transferManager);
-app.decorate('miningManager', miningManager);
-app.decorate('log', console);
+    initializationPromise = (async () => {
+        const app = new WorkerFastifyAdapter();
 
-app.setErrorHandler(async (error, request, reply) => {
-    app.log.error?.(error);
+        const blockchain = new Blockchain();
+        const walletManager = new WalletManager(blockchain);
+        const tokenManager = new TokenManager(blockchain);
+        const transferManager = new TransferManager(blockchain, walletManager);
+        const miningManager = new MiningManager(blockchain, walletManager);
 
-    reply.code(500).send({
-        success: false,
-        error: 'Internal Server Error',
-        message: error.message,
-        timestamp: new Date().toISOString()
+        app.decorate('blockchain', blockchain);
+        app.decorate('walletManager', walletManager);
+        app.decorate('tokenManager', tokenManager);
+        app.decorate('transferManager', transferManager);
+        app.decorate('miningManager', miningManager);
+        app.decorate('log', console);
+
+        app.setErrorHandler(async (error, request, reply) => {
+            app.log.error?.(error);
+
+            reply.code(500).send({
+                success: false,
+                error: 'Internal Server Error',
+                message: error.message,
+                timestamp: new Date().toISOString()
+            });
+        });
+
+        app.setNotFoundHandler(async (request, reply) => {
+            reply.code(404).send({
+                success: false,
+                error: 'Route not found',
+                message: `Route ${request.method} ${new URL(request.url).pathname} not found`,
+                timestamp: new Date().toISOString()
+            });
+        });
+
+        app.get('/health', async () => ({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            version: '1.0.0'
+        }));
+
+        app.get('/', async () => {
+            const chainInfo = blockchain.getChainInfo();
+            const tokenInfo = tokenManager.getTokenInfo();
+            const miningStatus = miningManager.getMiningStatus();
+
+            return {
+                message: 'Chain Cosmos API Server',
+                version: '1.0.0',
+                status: 'running',
+                blockchain: chainInfo,
+                token: tokenInfo,
+                mining: miningStatus,
+                endpoints: {
+                    blockchain: '/api/blockchain',
+                    wallets: '/api/wallets',
+                    transfers: '/api/transfers',
+                    mining: '/api/mining',
+                    tokens: '/api/tokens'
+                }
+            };
+        });
+
+        console.log('🚀 Chain Cosmos Worker initialized');
+
+        const wallet1 = walletManager.createWallet();
+        const wallet2 = walletManager.createWallet();
+
+        console.log(`钱包 1: ${wallet1.wallet.address}`);
+        console.log(`钱包 2: ${wallet2.wallet.address}`);
+
+        const minerResult = miningManager.registerMiner(wallet1.wallet.address, '测试矿工 1');
+        console.log(`✅ 已注册矿工: ${minerResult.miner.name}`);
+
+        await app.register(blockchainRoutes, { prefix: '/api/blockchain' });
+        await app.register(walletRoutes, { prefix: '/api/wallets' });
+        await app.register(transferRoutes, { prefix: '/api/transfers' });
+        await app.register(miningRoutes, { prefix: '/api/mining' });
+        await app.register(tokenRoutes, { prefix: '/api/tokens' });
+
+        initializedApp = app;
+        return app;
+    })().catch(error => {
+        initializationPromise = undefined;
+        throw error;
     });
-});
 
-app.setNotFoundHandler(async (request, reply) => {
-    reply.code(404).send({
-        success: false,
-        error: 'Route not found',
-        message: `Route ${request.method} ${new URL(request.url).pathname} not found`,
-        timestamp: new Date().toISOString()
-    });
-});
-
-app.get('/health', async () => ({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-}));
-
-app.get('/', async () => {
-    const chainInfo = blockchain.getChainInfo();
-    const tokenInfo = tokenManager.getTokenInfo();
-    const miningStatus = miningManager.getMiningStatus();
-
-    return {
-        message: 'Chain Cosmos API Server',
-        version: '1.0.0',
-        status: 'running',
-        blockchain: chainInfo,
-        token: tokenInfo,
-        mining: miningStatus,
-        endpoints: {
-            blockchain: '/api/blockchain',
-            wallets: '/api/wallets',
-            transfers: '/api/transfers',
-            mining: '/api/mining',
-            tokens: '/api/tokens'
-        }
-    };
-});
-
-const setupPromise = (async () => {
-    console.log('🚀 Chain Cosmos Worker initialized');
-
-    const wallet1 = walletManager.createWallet();
-    const wallet2 = walletManager.createWallet();
-
-    console.log(`钱包 1: ${wallet1.wallet.address}`);
-    console.log(`钱包 2: ${wallet2.wallet.address}`);
-
-    const minerResult = miningManager.registerMiner(wallet1.wallet.address, '测试矿工 1');
-    console.log(`✅ 已注册矿工: ${minerResult.miner.name}`);
-
-    await app.register(blockchainRoutes, { prefix: '/api/blockchain' });
-    await app.register(walletRoutes, { prefix: '/api/wallets' });
-    await app.register(transferRoutes, { prefix: '/api/transfers' });
-    await app.register(miningRoutes, { prefix: '/api/mining' });
-    await app.register(tokenRoutes, { prefix: '/api/tokens' });
-})();
+    await initializationPromise;
+    return initializedApp;
+}
 
 export default {
     /**
@@ -464,7 +483,7 @@ export default {
      * @returns {Promise<Response>}
      */
     async fetch(request, env, ctx) {
-        await setupPromise;
+        const app = await setupApplication();
         return app.handle(request);
     }
 };
