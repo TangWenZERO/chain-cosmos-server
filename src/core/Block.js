@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { sha256Hex } from '../utils/crypto.js';
 
 export class Block {
     /**
@@ -21,10 +21,8 @@ export class Block {
      * @returns {string} 区块的哈希值
      */
     calculateHash() {
-        return crypto
-            .createHash('sha256')
-            .update(this.previousHash + this.timestamp + JSON.stringify(this.transactions) + this.nonce)
-            .digest('hex');
+        const payload = `${this.previousHash}${this.timestamp}${JSON.stringify(this.transactions)}${this.nonce}`;
+        return sha256Hex(payload);
     }
 
     /**

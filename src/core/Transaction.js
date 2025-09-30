@@ -1,5 +1,5 @@
-import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { sha256Hex } from '../utils/crypto.js';
 
 export class Transaction {
     /**
@@ -25,10 +25,8 @@ export class Transaction {
      * @returns {string} 交易的哈希值
      */
     calculateHash() {
-        return crypto
-            .createHash('sha256')
-            .update(this.fromAddress + this.toAddress + this.amount + this.timestamp + this.type)
-            .digest('hex');
+        const payload = `${this.fromAddress}${this.toAddress}${this.amount}${this.timestamp}${this.type}`;
+        return sha256Hex(payload);
     }
 
     /**

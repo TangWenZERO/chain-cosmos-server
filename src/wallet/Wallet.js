@@ -1,5 +1,5 @@
-import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { randomHex, sha256Hex, ripemd160Hex, hmacSha256Hex } from '../utils/crypto.js';
 
 export class Wallet {
     /**
@@ -15,11 +15,11 @@ export class Wallet {
 
     /**
      * 生成私钥
-     * 使用crypto模块生成32字节的随机数据作为私钥
+     * 使用 Web Crypto 生成32字节的随机数据作为私钥
      * @returns {string} 64字符的十六进制私钥字符串
      */
     generatePrivateKey() {
-        return crypto.randomBytes(32).toString('hex');
+        return randomHex(32);
     }
 
     /**
@@ -28,9 +28,7 @@ export class Wallet {
      * @returns {string} 64字符的十六进制公钥字符串
      */
     generatePublicKey() {
-        const hash = crypto.createHash('sha256');
-        hash.update(this.privateKey);
-        return hash.digest('hex');
+        return sha256Hex(this.privateKey);
     }
 
     /**
@@ -39,17 +37,9 @@ export class Wallet {
      * @returns {string} 以'cosmo'开头的45字符钱包地址
      */
     generateAddress() {
-        // 对公钥进行SHA-256哈希
-        const hash1 = crypto.createHash('sha256');
-        hash1.update(this.publicKey);
-        const hash1Result = hash1.digest('hex');
-
-        // 对SHA-256结果进行RIPEMD-160哈希
-        const hash2 = crypto.createHash('ripemd160');
-        hash2.update(hash1Result, 'hex');
-        
-        // 添加'cosmo'前缀生成最终地址
-        return 'cosmo' + hash2.digest('hex');
+        const intermediate = sha256Hex(this.publicKey);
+        const body = ripemd160Hex(intermediate, 'hex');
+        return `cosmo${body}`;
     }
 
     /**
@@ -59,9 +49,7 @@ export class Wallet {
      * @returns {string} 消息签名
      */
     sign(message) {
-        const hmac = crypto.createHmac('sha256', this.privateKey);
-        hmac.update(message);
-        return hmac.digest('hex');
+        return hmacSha256Hex(this.privateKey, message);
     }
 
     /**
