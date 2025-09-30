@@ -44,11 +44,17 @@ export async function miningRoutes(fastify, options) {
     }, async (request, reply) => {
         try {
             const { minerAddress } = request.body;
-            const result = miningManager.startMining(minerAddress);
-            
+            const { response, waitUntil } = miningManager.startMining(minerAddress);
+
+            if (waitUntil && request.executionCtx) {
+                request.executionCtx.waitUntil(waitUntil.catch(error => {
+                    request.log.error?.(error);
+                }));
+            }
+
             return {
                 success: true,
-                data: result
+                data: response
             };
         } catch (error) {
             reply.code(400).send({

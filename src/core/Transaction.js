@@ -75,4 +75,21 @@ export class Transaction {
             signature: this.signature      // 签名
         };
     }
+
+    /**
+     * 从JSON对象恢复交易
+     * @param {Object} data - JSON格式的交易数据
+     * @returns {Transaction}
+     */
+    static fromJSON(data = {}) {
+        const tx = Object.create(Transaction.prototype);
+        tx.id = data.id ?? uuidv4();
+        tx.fromAddress = data.fromAddress ?? null;
+        tx.toAddress = data.toAddress ?? null;
+        tx.amount = data.amount ?? 0;
+        tx.type = data.type ?? 'transfer';
+        tx.timestamp = data.timestamp ?? Date.now();
+        tx.signature = data.signature ?? null;
+        return tx;
+    }
 }

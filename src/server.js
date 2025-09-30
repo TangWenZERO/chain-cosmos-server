@@ -9,6 +9,7 @@ import { walletRoutes } from './api/routes/wallet.js';
 import { transferRoutes } from './api/routes/transfer.js';
 import { miningRoutes } from './api/routes/mining.js';
 import { tokenRoutes } from './api/routes/token.js';
+import { initializeState, readState } from './storage/stateStore.js';
 
 const DEFAULT_CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
@@ -222,7 +223,7 @@ class WorkerFastifyAdapter {
         }
     }
 
-    async buildRequestObject(request, url, params) {
+    async buildRequestObject(request, url, params, env, executionCtx) {
         const query = {};
         for (const [key, value] of url.searchParams.entries()) {
             if (query[key] === undefined) {
@@ -243,7 +244,9 @@ class WorkerFastifyAdapter {
             body: undefined,
             raw: request,
             fastify: this,
-            log: this.log
+            log: this.log,
+            env,
+            executionCtx
         };
 
         if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
@@ -335,7 +338,7 @@ class WorkerFastifyAdapter {
         return pathname || '/';
     }
 
-    async handle(request) {
+    async handle(request, env, executionCtx) {
         if (request.method === 'OPTIONS') {
             return this.handleOptions(request);
         }
@@ -348,7 +351,7 @@ class WorkerFastifyAdapter {
         let requestWrapper;
 
         try {
-            requestWrapper = await this.buildRequestObject(request, url, params);
+            requestWrapper = await this.buildRequestObject(request, url, params, env, executionCtx);
         } catch (error) {
             if (error instanceof HttpError) {
                 reply.code(error.statusCode);
@@ -386,11 +389,26 @@ async function setupApplication() {
     initializationPromise = (async () => {
         const app = new WorkerFastifyAdapter();
 
+        initializeState();
+
         const blockchain = new Blockchain();
         const walletManager = new WalletManager(blockchain);
         const tokenManager = new TokenManager(blockchain);
         const transferManager = new TransferManager(blockchain, walletManager);
         const miningManager = new MiningManager(blockchain, walletManager);
+
+        const snapshot = readState();
+        if (snapshot?.blockchain) {
+            blockchain.loadFromJSON(snapshot.blockchain);
+        }
+
+        if (snapshot?.wallets) {
+            walletManager.loadFromJSON(snapshot.wallets);
+        }
+
+        if (snapshot?.mining) {
+            miningManager.loadFromJSON(snapshot.mining);
+        }
 
         app.decorate('blockchain', blockchain);
         app.decorate('walletManager', walletManager);
@@ -429,6 +447,11 @@ async function setupApplication() {
             const chainInfo = blockchain.getChainInfo();
             const tokenInfo = tokenManager.getTokenInfo();
             const miningStatus = miningManager.getMiningStatus();
+            const snapshot = readState();
+
+            const sanitizedWallets = snapshot?.wallets?.wallets
+                ? snapshot.wallets.wallets.map(({ privateKey, ...rest }) => rest)
+                : [];
 
             return {
                 message: 'Chain Cosmos API Server',
@@ -443,20 +466,31 @@ async function setupApplication() {
                     transfers: '/api/transfers',
                     mining: '/api/mining',
                     tokens: '/api/tokens'
+                },
+                stateSnapshot: {
+                    updatedAt: snapshot?.updatedAt ?? null,
+                    blockchain: snapshot?.blockchain ?? null,
+                    wallets: {
+                        count: snapshot?.wallets?.count ?? 0,
+                        wallets: sanitizedWallets
+                    },
+                    mining: snapshot?.mining ?? null
                 }
             };
         });
 
         console.log('🚀 Chain Cosmos Worker initialized');
 
-        const wallet1 = walletManager.createWallet();
-        const wallet2 = walletManager.createWallet();
+        if (walletManager.wallets.size === 0) {
+            const wallet1 = walletManager.createWallet();
+            const wallet2 = walletManager.createWallet();
 
-        console.log(`钱包 1: ${wallet1.wallet.address}`);
-        console.log(`钱包 2: ${wallet2.wallet.address}`);
+            console.log(`钱包 1: ${wallet1.wallet.address}`);
+            console.log(`钱包 2: ${wallet2.wallet.address}`);
 
-        const minerResult = miningManager.registerMiner(wallet1.wallet.address, '测试矿工 1');
-        console.log(`✅ 已注册矿工: ${minerResult.miner.name}`);
+            const minerResult = miningManager.registerMiner(wallet1.wallet.address, '测试矿工 1');
+            console.log(`✅ 已注册矿工: ${minerResult.miner.name}`);
+        }
 
         await app.register(blockchainRoutes, { prefix: '/api/blockchain' });
         await app.register(walletRoutes, { prefix: '/api/wallets' });
@@ -484,6 +518,6 @@ export default {
      */
     async fetch(request, env, ctx) {
         const app = await setupApplication();
-        return app.handle(request);
+        return app.handle(request, env, ctx);
     }
 };

@@ -1,4 +1,5 @@
 import { sha256Hex } from '../utils/crypto.js';
+import { Transaction } from './Transaction.js';
 
 export class Block {
     /**
@@ -69,5 +70,22 @@ export class Block {
             nonce: this.nonce,
             hash: this.hash
         };
+    }
+
+    /**
+     * 从JSON对象恢复区块
+     * @param {Object} data - JSON格式的区块数据
+     * @returns {Block}
+     */
+    static fromJSON(data = {}) {
+        const block = Object.create(Block.prototype);
+        block.timestamp = data.timestamp ?? Date.now();
+        block.transactions = Array.isArray(data.transactions)
+            ? data.transactions.map(tx => Transaction.fromJSON(tx))
+            : [];
+        block.previousHash = data.previousHash ?? '0';
+        block.nonce = data.nonce ?? 0;
+        block.hash = data.hash ?? sha256Hex('');
+        return block;
     }
 }

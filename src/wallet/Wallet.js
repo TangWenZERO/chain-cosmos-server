@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { randomHex, sha256Hex, ripemd160Hex, hmacSha256Hex } from '../utils/crypto.js';
+import { saveWalletState } from '../storage/stateStore.js';
 
 export class Wallet {
     /**
@@ -122,7 +123,9 @@ export class WalletManager {
     createWallet() {
         const wallet = new Wallet();                    // 创建新钱包
         this.wallets.set(wallet.address, wallet);       // 将钱包存储到映射表中
-        
+
+        saveWalletState(this);
+
         // 返回创建成功结果
         return {
             success: true,
@@ -190,6 +193,8 @@ export class WalletManager {
             // 将钱包存储到映射表中
             this.wallets.set(wallet.address, wallet);
 
+            saveWalletState(this);
+
             // 返回导入成功结果
             return {
                 success: true,
@@ -232,6 +237,8 @@ export class WalletManager {
 
         this.wallets.delete(address);                   // 从映射表中删除钱包
 
+        saveWalletState(this);
+
         // 返回删除成功结果
         return {
             success: true,
@@ -255,5 +262,51 @@ export class WalletManager {
     isValidAddress(address) {
         // 检查地址是否以'cosmo'开头且长度为45字符
         return address && address.startsWith('cosmo') && address.length === 45;
+    }
+
+    toJSON({ includePrivate = false } = {}) {
+        const wallets = [];
+        this.wallets.forEach(wallet => {
+            const serialized = {
+                id: wallet.id,
+                address: wallet.address,
+                publicKey: wallet.publicKey
+            };
+            if (includePrivate) {
+                serialized.privateKey = wallet.privateKey;
+            }
+            wallets.push(serialized);
+        });
+
+        return {
+            wallets,
+            count: wallets.length
+        };
+    }
+
+    loadFromJSON(data = {}) {
+        const { wallets = [] } = data;
+        this.wallets.clear();
+
+        wallets.forEach(item => {
+            if (!item || typeof item !== 'object') {
+                return;
+            }
+
+            if (!item.privateKey) {
+                return;
+            }
+
+            const wallet = Wallet.importWallet({
+                id: item.id,
+                privateKey: item.privateKey,
+                publicKey: item.publicKey,
+                address: item.address
+            });
+
+            this.wallets.set(wallet.address, wallet);
+        });
+
+        saveWalletState(this);
     }
 }

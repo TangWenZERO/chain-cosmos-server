@@ -1,5 +1,6 @@
 import { Block } from './Block.js';
 import { Transaction } from './Transaction.js';
+import { saveBlockchainState } from '../storage/stateStore.js';
 
 export class Blockchain {
     /**
@@ -7,12 +8,14 @@ export class Blockchain {
      * 初始化区块链，创建创世区块并设置初始参数
      */
     constructor() {
-        this.chain = [this.createGenesisBlock()];     // 初始化区块链，包含创世区块
+        this.totalSupply = 1000000;                   // 总供应量
+        this.circulatingSupply = 0;                   // 流通供应量
         this.difficulty = 2;                          // 挖矿难度
         this.pendingTransactions = [];                // 待处理交易池
         this.miningReward = 100;                      // 挖矿奖励
-        this.totalSupply = 1000000;                   // 总供应量
-        this.circulatingSupply = 0;                   // 流通供应量
+        this.chain = [this.createGenesisBlock()];     // 初始化区块链，包含创世区块
+
+        saveBlockchainState(this);
     }
 
     /**
@@ -65,6 +68,8 @@ export class Blockchain {
         this.circulatingSupply += this.miningReward;
         // 清空待处理交易列表
         this.pendingTransactions = [];
+
+        saveBlockchainState(this);
     }
 
     /**
@@ -96,6 +101,8 @@ export class Blockchain {
 
         // 将交易添加到待处理交易池
         this.pendingTransactions.push(transaction);
+
+        saveBlockchainState(this);
     }
 
     /**
@@ -225,5 +232,43 @@ export class Blockchain {
             totalSupply: this.totalSupply,
             circulatingSupply: this.circulatingSupply
         };
+    }
+
+    /**
+     * 根据JSON数据恢复区块链状态
+     * @param {Object} data - 区块链状态数据
+     */
+    loadFromJSON(data = {}) {
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+
+        const { chain, difficulty, pendingTransactions, miningReward, totalSupply, circulatingSupply } = data;
+
+        if (Array.isArray(chain) && chain.length > 0) {
+            this.chain = chain.map(blockData => Block.fromJSON(blockData));
+        }
+
+        if (typeof difficulty === 'number') {
+            this.difficulty = difficulty;
+        }
+
+        if (Array.isArray(pendingTransactions)) {
+            this.pendingTransactions = pendingTransactions.map(txData => Transaction.fromJSON(txData));
+        }
+
+        if (typeof miningReward === 'number') {
+            this.miningReward = miningReward;
+        }
+
+        if (typeof totalSupply === 'number') {
+            this.totalSupply = totalSupply;
+        }
+
+        if (typeof circulatingSupply === 'number') {
+            this.circulatingSupply = circulatingSupply;
+        }
+
+        saveBlockchainState(this);
     }
 }

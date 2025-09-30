@@ -1,3 +1,5 @@
+import { saveBlockchainState, saveMiningState } from '../storage/stateStore.js';
+
 export class MiningManager {
     /**
      * 挖矿管理器构造函数
@@ -12,6 +14,11 @@ export class MiningManager {
         this.isMining = false;                  // 挖矿状态标记
         this.currentMiner = null;               // 当前挖矿的矿工地址
         this.miningStartTime = null;            // 挖矿开始时间
+        this.currentTimeoutId = null;           // 当前挖矿的定时器ID
+        this.currentMiningPromise = null;       // 当前挖矿的Promise
+        this.currentMiningResolve = null;       // 当前挖矿Promise的resolve
+        this.currentMiningReject = null;        // 当前挖矿Promise的reject
+        this.currentMiningDuration = null;      // 当前挖矿预计耗时
     }
 
     /**
@@ -52,6 +59,8 @@ export class MiningManager {
             totalMiningTime: 0                  // 总挖矿时间
         });
 
+        saveMiningState(this);
+
         // 返回注册成功结果
         return {
             success: true,
@@ -86,22 +95,47 @@ export class MiningManager {
         this.currentMiner = minerAddress;
         this.miningStartTime = Date.now();
 
+        const duration = Math.floor(Math.random() * 5000) + 5000; // 5-10秒
+        this.currentMiningDuration = duration;
+
         // 更新矿工活跃状态
         const miner = this.miners.get(minerAddress);
         miner.isActive = true;
 
-        // 启动挖矿过程（简化版）
-        setTimeout(() => {
-            this.completeMining(minerAddress);
-        }, Math.random() * 10000 + 5000); // 随机挖矿时间5-15秒
+        const miningPromise = new Promise((resolve, reject) => {
+            this.currentMiningResolve = resolve;
+            this.currentMiningReject = reject;
+            this.currentTimeoutId = setTimeout(() => {
+                try {
+                    const result = this.completeMining(minerAddress);
+                    resolve(result);
+                } catch (error) {
+                    reject(error);
+                } finally {
+                    this.currentTimeoutId = null;
+                    this.currentMiningResolve = null;
+                    this.currentMiningReject = null;
+                    this.currentMiningDuration = null;
+                    this.currentMiningPromise = null;
+                }
+            }, duration);
+        });
+
+        this.currentMiningPromise = miningPromise;
+
+        saveMiningState(this);
 
         // 返回开始挖矿结果
         return {
-            success: true,
-            message: `Mining started by ${miner.name}`,
-            minerAddress: minerAddress,
-            pendingTransactions: this.blockchain.pendingTransactions.length,
-            difficulty: this.blockchain.difficulty
+            response: {
+                success: true,
+                message: `Mining started by ${miner.name}`,
+                minerAddress: minerAddress,
+                pendingTransactions: this.blockchain.pendingTransactions.length,
+                difficulty: this.blockchain.difficulty,
+                estimatedDurationMs: duration
+            },
+            waitUntil: miningPromise
         };
     }
 
@@ -119,7 +153,8 @@ export class MiningManager {
         try {
             // 挖掘待处理交易
             this.blockchain.minePendingTransactions(minerAddress);
-            
+            saveBlockchainState(this.blockchain);
+
             // 计算挖矿结束时间和持续时间
             const miningEndTime = Date.now();
             const miningDuration = miningEndTime - this.miningStartTime;
@@ -140,9 +175,16 @@ export class MiningManager {
             this.isMining = false;
             this.currentMiner = null;
             this.miningStartTime = null;
+            this.currentTimeoutId = null;
+            this.currentMiningPromise = null;
+            this.currentMiningResolve = null;
+            this.currentMiningReject = null;
+            this.currentMiningDuration = null;
 
             // 获取最新挖出的区块
             const newBlock = this.blockchain.getLatestBlock();
+
+            saveMiningState(this);
 
             // 返回挖矿成功结果
             return {
@@ -158,6 +200,13 @@ export class MiningManager {
             this.isMining = false;
             this.currentMiner = null;
             this.miningStartTime = null;
+            this.currentTimeoutId = null;
+            this.currentMiningPromise = null;
+            this.currentMiningResolve = null;
+            this.currentMiningReject = null;
+            this.currentMiningDuration = null;
+
+            saveMiningState(this);
             
             throw new Error(`Mining failed: ${error.message}`);
         }
@@ -184,9 +233,25 @@ export class MiningManager {
         this.currentMiner = null;
         this.miningStartTime = null;
 
+        if (this.currentTimeoutId) {
+            clearTimeout(this.currentTimeoutId);
+            this.currentTimeoutId = null;
+        }
+
+        if (this.currentMiningReject) {
+            this.currentMiningReject(new Error('Mining stopped by user'));
+        }
+
+        this.currentMiningPromise = null;
+        this.currentMiningResolve = null;
+        this.currentMiningReject = null;
+        this.currentMiningDuration = null;
+
         // 更新矿工活跃状态
         const miner = this.miners.get(minerAddress);
         miner.isActive = false;
+
+        saveMiningState(this);
 
         // 返回停止挖矿结果
         return {
@@ -209,7 +274,7 @@ export class MiningManager {
             pendingTransactions: this.blockchain.pendingTransactions.length, // 待处理交易数
             miningReward: this.blockchain.miningReward,         // 挖矿奖励
             estimatedTimeToBlock: this.isMining ? 
-                Math.max(0, 10000 - (Date.now() - this.miningStartTime)) : null // 预计出块时间
+                Math.max(0, (this.currentMiningDuration ?? 0) - (Date.now() - this.miningStartTime)) : null // 预计出块时间
         };
     }
 
@@ -350,6 +415,9 @@ export class MiningManager {
             this.blockchain.difficulty -= 1;
         }
 
+        saveMiningState(this);
+        saveBlockchainState(this.blockchain);
+
         // 返回调整后的难度信息
         return {
             newDifficulty: this.blockchain.difficulty,  // 新难度
@@ -378,10 +446,56 @@ export class MiningManager {
         this.miners.delete(minerAddress);
         this.miningStats.delete(minerAddress);
 
+        saveMiningState(this);
+
         // 返回注销成功结果
         return {
             success: true,
             message: 'Miner unregistered successfully'
         };
+    }
+
+    toJSON() {
+        return {
+            isMining: this.isMining,
+            currentMiner: this.currentMiner,
+            miningStartTime: this.miningStartTime,
+            currentMiningDuration: this.currentMiningDuration,
+            miners: Array.from(this.miners.values()),
+            miningStats: Array.from(this.miningStats.entries()).map(([address, stats]) => ({
+                address,
+                ...stats
+            }))
+        };
+    }
+
+    loadFromJSON(data = {}) {
+        const { miners = [], miningStats = [] } = data;
+
+        this.miners = new Map();
+        miners.forEach(miner => {
+            if (miner && miner.address) {
+                this.miners.set(miner.address, { ...miner });
+            }
+        });
+
+        this.miningStats = new Map();
+        miningStats.forEach(entry => {
+            if (entry && entry.address) {
+                const { address, ...stats } = entry;
+                this.miningStats.set(address, { ...stats });
+            }
+        });
+
+        this.isMining = false;
+        this.currentMiner = null;
+        this.miningStartTime = null;
+        this.currentTimeoutId = null;
+        this.currentMiningPromise = null;
+        this.currentMiningResolve = null;
+        this.currentMiningReject = null;
+        this.currentMiningDuration = null;
+
+        saveMiningState(this);
     }
 }
